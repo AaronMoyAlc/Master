@@ -80,4 +80,9 @@ def train_and_evaluate(model, param_grid, training_data, test_data):
     predictions = cv_model.bestModel.transform(test_data)
     rmse = evaluator.evaluate(predictions)
 
+    print(f"\nResultados del modelo {type(model).__name__}:")
+    predictions.select("ArrDelay", "prediction").show(
+        10, truncate=False
+    )  # Mostrar predicciones y etiquetas reales
+
     return cv_model.bestModel, rmse
