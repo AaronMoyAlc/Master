@@ -52,3 +52,32 @@ def estimate_kmeans(df, input_col, k):
     tranformed = model.transform(test)
     tranformed.show()
     return model
+
+
+from pyspark.ml.evaluation import RegressionEvaluator
+from pyspark.ml.tuning import ParamGridBuilder, CrossValidator
+from pyspark.ml.regression import LinearRegression, RandomForestRegressor, GBTRegressor
+
+
+# Entrenar y evaluar modelos
+def train_and_evaluate(model, param_grid, training_data, test_data):
+    """
+    Entrena y evalúa un modelo dado utilizando validación cruzada.
+    """
+    evaluator = RegressionEvaluator(
+        labelCol="ArrDelay", predictionCol="prediction", metricName="rmse"
+    )
+
+    # Configurar validación cruzada
+    crossval = CrossValidator(
+        estimator=model, estimatorParamMaps=param_grid, evaluator=evaluator, numFolds=3
+    )
+
+    # Entrenar el modelo
+    cv_model = crossval.fit(training_data)
+
+    # Evaluar en datos de prueba
+    predictions = cv_model.bestModel.transform(test_data)
+    rmse = evaluator.evaluate(predictions)
+
+    return cv_model.bestModel, rmse
