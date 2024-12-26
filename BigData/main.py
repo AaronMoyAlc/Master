@@ -1,27 +1,32 @@
 from pyspark.sql import SparkSession
-from models import estimate_lr, estimate_kmeans, train_and_evaluate
-from eda import eda
-from preprocessing import preprocessing
-from filter_datasets import filter_columns
-from process_2008_data import process_2008_data
+from utils.models import (
+    train_and_evaluate,
+    perform_kmeans_clustering,
+)
+from utils.eda import eda
+from utils.preprocessing import preprocessing
+from utils.filter_datasets import filter_columns
+from utils.process_2008_data import process_2008_data
+from pyspark.ml.tuning import ParamGridBuilder
+from pyspark.ml.regression import LinearRegression, RandomForestRegressor, GBTRegressor
 
 
 def main():
-    spark = SparkSession.builder.appName("proyecto").getOrCreate()
+    spark = SparkSession.builder.appName("Flight_delays_predictor").getOrCreate()
     file_configs = [
         {
-            "input": "airports.csv",
-            "output": "filtered_airports.csv",
+            "input": "csv/airports.csv",
+            "output": "csv/filtered_airports.csv",
             "columns": ["iata"],
         },
         {
-            "input": "carriers.csv",
-            "output": "filtered_carriers.csv",
+            "input": "csv/carriers.csv",
+            "output": "csv/filtered_carriers.csv",
             "columns": ["Code"],
         },
         {
-            "input": "plane-data.csv",
-            "output": "filtered_plane_data.csv",
+            "input": "csv/plane-data.csv",
+            "output": "csv/filtered_plane_data.csv",
             "columns": ["tailnum"],
         },
     ]
@@ -30,9 +35,9 @@ def main():
     for config in file_configs:
         filter_columns(config["input"], config["output"], config["columns"])
     # Input and output file paths
-    input_2008_file = "2008.csv"
-    input_plane_file = "plane-data.csv"
-    output_file = "processed_2008.csv"
+    input_2008_file = "csv/2008.csv"
+    input_plane_file = "csv/plane-data.csv"
+    output_file = "csv/processed_2008.csv"
     # original_col = [Year,Month,DayofMonth,DayOfWeek,DepTime,CRSDepTime,ArrTime,CRSArrTime,UniqueCarrier,FlightNum,TailNum,ActualElapsedTime,CRSElapsedTime,AirTime,ArrDelay,DepDelay,Origin,Dest,Distance,TaxiIn,TaxiOut,Cancelled,CancellationCode,Diverted,CarrierDelay,WeatherDelay,NASDelay,SecurityDelay,LateAircraftDelay]
     # Run the function
     process_2008_data(input_2008_file, input_plane_file, output_file)
@@ -52,10 +57,10 @@ def main():
     eda(df, numerical_cols, categorical_cols)
 
     # Preprocesamiento de datos
-    df = preprocessing(df)
+    preprocessed_df = preprocessing(df)
 
     # trainig the models
-    train_data, test_data = df.randomSplit([0.8, 0.2], seed=42)
+    train_data, test_data = preprocessed_df.randomSplit([0.8, 0.2], seed=42)
 
     # Modelo 1: Regresión Lineal
     lr = LinearRegression(featuresCol="features", labelCol="ArrDelay")
@@ -111,6 +116,24 @@ def main():
     # Elegir el mejor modelo
     best_model_name, best_rmse = results_sorted[0]
     print(f"\nBest Model: {best_model_name} with RMSE = {best_rmse:.3f}")
+
+    # Estimar los centroides de los clusters
+    # Realizar clustering
+
+    k_values = [3, 4, 5, 7, 9]  # Lista de valores de k a probar
+    clustering_results = perform_kmeans_clustering(preprocessed_df, k_values)
+
+    # Obtener los resultados del mejor modelo según el Silhouette Score
+    best_k = max(
+        clustering_results, key=lambda k: clustering_results[k]["silhouette_score"]
+    )
+    best_model = clustering_results[best_k]["model"]
+    print(
+        f"Mejor modelo con k={best_k} y Silhouette Score={clustering_results[best_k]['silhouette_score']:.3f}"
+    )
+
+    # terminamos la sesión de Spark
+    spark.stop()
 
 
 if __name__ == "__main__":
